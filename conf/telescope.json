@@ -1,0 +1,10 @@
+{
+    "neigh_change_mon" : {
+        "enabled": true,
+        "router_service_db" : {
+            "db": "RouterServiceMonitor",
+            "user": "Auditor",
+            "password": "?"
+        }
+    }
+}
