@@ -21,3 +21,14 @@ within database, also access domain name will be recorded
   2. management access   
         detailed to uri   
 
+
+### traffic_monitor.py    
+Called by syslog-ng to direct push access to SQL database
+
+
+
+## UmbrellaTelescope is mainly the middle of the Defense in Depth  
+   1. it analysis the internal security controlled network behavior   
+   2. records int -> ext traffic  
+   3. lockdown internal devices, close limited configured devices ext network access behavior   
+
