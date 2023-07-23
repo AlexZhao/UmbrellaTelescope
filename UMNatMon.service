@@ -1,0 +1,12 @@
+[Unit]
+Description=Network Access Audit,Dynamic Forwarding Configuration Engine
+After=multi-user.target
+
+[Service]
+WorkingDirectory=/usr/bin/umbrella/
+Environment="PYTHONPATH=/usr/bin/umbrella/:$PYTHONPATH"
+ExecStart=/usr/bin/python nat_monitor.py /var/log/auditor_python.log
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
