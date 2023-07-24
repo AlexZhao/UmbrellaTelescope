@@ -187,3 +187,4 @@ it also support redeye dump, when there is no device connected, it will close up
 
 
 ![Donate](./DONATE.JPG)
+![Donate](./DONATE_Z.JPG)
