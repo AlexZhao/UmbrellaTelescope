@@ -1,6 +1,13 @@
 #!/usr/bin/python
 # Apache 2.0
 # Copyright 2021-2023 Zhao Zhe (Alex)
+#
+# Traffic Monitoring 
+#
+# Pythong script called by syslog-ng receive from FreeBSD ipfw syslog
+#
+# self.log_file is fixed at /var/log/auditor_python.log
+#
 # Python Script to Monitor all remote IP address outbound link
 # which syslog-ng from FreeBSD main router and insert the all 
 # links destination IP/Source Pair to MySQL with its frequency
