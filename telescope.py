@@ -1,10 +1,14 @@
 #!/usr/bin/python
 # Apache 2.0
+#
+# Umbrella Telescope DMZ controlling internal network monitoring
+#
 # Copyright 2012-2023 Zhao Zhe(Alex)
 # You don't need it except you want to record every access from your internal network
 # Daemon process to monitoring device according to its
 # defined list
 import io
+import sys
 from concurrent.futures import thread
 from arp_entries.arp_entries import ArpEntries;
 import threading
@@ -310,17 +314,20 @@ class DynamicFWIntf:
             print("Remove IP from DNS forwarding failed")
 
 class Telescope:
-    def __init__(self, log_path):
+    def __init__(self):
         # associate with device identification
         self.under_monitor = {}
+        
         # RedEye
         self.redeye_mon_start = datetime.time(0, 0, 0)
         self.redeye_mon_end = datetime.time(6, 0, 0)
         self.redeye_monitor = {}
         self.redeye_lookup = {}
+        
         # Neighbour Info
         self.neigh_entries = ArpEntries(load_device_list("known_device.list"))
         self.neigh_entries.start_mon()
+
         self.lock = threading.Lock()
         self.under_out_traffic_monitor = False
         self.under_dns_traffic_monitor = False
@@ -329,15 +336,13 @@ class Telescope:
         self.restore_log_path = "/var/log/telescope/"
         self.config = dict({"neigh_change_mon": dict({"enabled": False})})
         
-        try:
-            file = open("/etc/telescope.json", 'r')
-            self.config = json.load(file)
-            file.close()
-        except:
-            print("Default configuration used")
-
+        self.config = None
         self.under_nf_monitor = False
-        self.auditor_log_file = log_path 
+
+        # Input logs
+        self.auditor_log_file = None 
+        self.dns_log_file = None
+
         self.dmz_lock = threading.Lock()
         self.dmz_access_record = {"UDP": dict({}), 
                                   "TCP": dict({}),
@@ -431,15 +436,20 @@ class Telescope:
 
         return dmz_access_result
 
-    def analysis_log(self):
+    def analysis_log(self, log_file):
         """
         Loop process to monitoring traffic log
         """
-        auditor_log_process = subprocess.Popen(['tail', '-f', self.auditor_log_file], stdout=subprocess.PIPE)
-        log_filter = re.compile("\[([\w\W]+)\] NAT OUT: <110>ipfw: ([\d]+) Nat ([\w]+) ([\d\.]+)\:([\d]+) ([\d\.]+):([\d]+) ([\w]+) via ([\w\d]+)", re.IGNORECASE)
+        self.auditor_log_file = log_file
+        try:
+            auditor_log_process = subprocess.Popen(['tail', '-f', self.auditor_log_file], stdout=subprocess.PIPE)
+            log_filter = re.compile("\[([\w\W]+)\] NAT OUT: <110>ipfw: ([\d]+) Nat ([\w]+) ([\d\.]+)\:([\d]+) ([\d\.]+):([\d]+) ([\w]+) via ([\w\d]+)", re.IGNORECASE)
+        except BaseException as e:
+            print("Not able to open NAT outing traffic log, NAT recording disabled with error  ", e)
+            return
 
         while self.under_out_traffic_monitor:
-            output = auditor_log_process.stdout.readline().decode("utf-8").strip();
+            output = auditor_log_process.stdout.readline().decode("utf-8").strip()
             dnat_match = log_filter.match(output)
             if dnat_match:
                 nat_dst_ip = dnat_match.group(6).strip()
@@ -479,6 +489,39 @@ class Telescope:
                         access_src[nat_src_ip] = protocol
                         self.redeye_monitor[nat_dst_ip] = access_src 
                     self.lock.release()
+
+    def analysis_nw_pkt_mon(self, nw_pkt_mon_file):
+        """
+        Loop process to monitoring all DNS traffic captured by Umbrealla NW
+        """
+        self.dns_log_file = nw_pkt_mon_file
+        try:
+            dns_pkt_process = subprocess.Popen(['tail', '-f', self.dns_log_file], stdout=subprocess.PIPE)
+        except BaseException as e:
+            print("Not able to open DNS packet monitor file, DNS packet monitor failed with error  ", e)
+            return 
+
+        while self.under_dns_traffic_monitor:
+            output = dns_pkt_process.stdout.readline().decode("utf-8").strip()
+            try:
+                dns_pkt = json.loads(output)
+                if dns_pkt["pkt_type"] == "dns_response":
+                    dst_ip = dns_pkt["ip_header"]["dst"]
+                    self.lock.acquire()
+                    # For each records within DNS.RR
+                    if dst_ip in self.under_monitor:
+                        for r in dns_pkt["rrs"]:
+                            records = r.split()
+                            if records[3] == "A":
+                                self.under_monitor[dst_ip].update_dns_lookup(records[0], records[4])
+                                if self.under_monitor[dst_ip].is_strict_monitored():
+                                    self.fw_intf.add_target_to_mon_host(dst_ip, records[4])
+                                    self.fw_intf.add_fwd_target(records[3])
+
+                    self.lock.release()
+            except BaseException as e:
+                print("Wrong format of the DNS packet recording  ", e)
+
 
     def analysis_tcpdump(self):
         """
@@ -757,15 +800,38 @@ class Telescope:
                         ip_neigh_cache_mon[ip_mac_pair]["timestamp"] = datetime.datetime.now().strftime('%m-%d-%Y %H:%M%S')
                     
 
-    def start_mon(self):
+    def start_mon(self, config_file):
+        try:
+            file = open(config_file, 'r')
+            self.config = json.load(file)
+            file.close()
+        except BaseException as e :
+            print("No workable configuration used ", e)
+            sys.exit()
+        
         # port 8483 = TS short for Telescope
-        self.under_out_traffic_monitor = True
-        self.log_mon_th = threading.Thread(name="out traffic mon", target=self.analysis_log)
-        self.log_mon_th.start()
+        if "input_logs" in self.config:
+            if "analysis_log" in self.config["input_logs"]:
+                self.under_out_traffic_monitor = True
+                self.log_mon_th = threading.Thread(name="out traffic mon", target=self.analysis_log, args=[self.config["input_logs"]["analysis_log"]])
+                self.log_mon_th.start()
 
-        self.under_dns_traffic_monitor = True
-        self.dns_mon_th = threading.Thread(name="dns mon", target=self.analysis_tcpdump)
-        self.dns_mon_th.start()
+        if not self.under_out_traffic_monitor:
+            print("WARNING: Main out traffic monitor misconfigured, check configuration ", self.config)
+            print("Require to proper configure inpput_logs:analysis_log section")
+
+        # Check if Umbrella NW enabled to parse log from configured inputs  
+        if "input_logs" in self.config:
+            if "nw_dns_log" in self.config["input_logs"]:
+                self.under_dns_traffic_monitor = True
+                self.dns_mon_th = threading.Thread(name="dns_mon", target=self.analysis_nw_pkt_mon, args=[self.config["input_logs"]["nw_dns_log"]])
+                self.dns_mon_th.start()
+
+        if not self.under_dns_traffic_monitor: 
+            self.under_dns_traffic_monitor = True
+            self.dns_mon_th = threading.Thread(name="dns mon", target=self.analysis_tcpdump)
+            self.dns_mon_th.start()
+
 
         self.under_nf_monitor = True
         self.nf_mon_th = threading.Thread(name="nf mon", target=self.analysis_nf)
@@ -863,7 +929,12 @@ api.add_resource(DMZAccess, '/dmz_details')
 
 
 if __name__ ==  '__main__':
-    telescope.start_mon()
+    config_file = "/etc/umbrella/telescope/telescope.json"
+
+    if sys.argv[1]:
+        config_file = sys.argv[1]
+
+    telescope.start_mon(config_file)
     
     app.run(debug=True, port=8483)
 
