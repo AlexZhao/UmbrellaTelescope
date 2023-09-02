@@ -11,7 +11,7 @@
 import click
 import ipaddress
 
-import subprocess;
+import subprocess
 
 CONTEXT_SETTINGS = dict(
     default_map={
@@ -24,7 +24,7 @@ CONTEXT_SETTINGS = dict(
     }
 )
 
-TELE_URI = "http://127.0.0.1:8483"
+TELE_URI = "https://127.0.0.1:8483"
 
 @click.group(context_settings=CONTEXT_SETTINGS)
 def tele_cli():

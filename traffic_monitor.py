@@ -14,13 +14,13 @@
 # and updated nearest timestamp
 # Just A slow home use prototype to enhance my home wifi router   
 #
-import re;
-import subprocess;
+import re
+import subprocess
 
-from datetime import datetime;
+from datetime import datetime
 
-from MySQLdb import _mysql;
-import MySQLdb;
+from MySQLdb import _mysql
+import MySQLdb
 
 class AuditorDestination(object):
     """

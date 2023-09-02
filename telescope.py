@@ -1,5 +1,7 @@
 #!/usr/bin/python
+#
 # Apache 2.0
+# Copyright 2021-2023 Zhao Zhe(Alex)
 #
 # Umbrella Telescope DMZ controlling internal network monitoring
 #
@@ -21,27 +23,25 @@
 # | state       | varchar(255) | YES  |     | NULL    |                |
 # +-------------+--------------+------+-----+---------+----------------+
 #
-import io
 import sys
-from concurrent.futures import thread
-from arp_entries.arp_entries import ArpEntries;
+from arp_entries import ArpEntries
 import threading
 
 from flask import Flask
-from flask_restful import reqparse, abort, Resource, Api
+from flask_restful import reqparse, Resource, Api
 
-import subprocess;
-import re;
-import time;
-import datetime;
-import json;
-import copy;
+import subprocess
+import re
+import time
+import datetime
+import json
+import copy
 
-import os;
-import subprocess;
+import os
+import subprocess
 
-from MySQLdb import _mysql;
-import MySQLdb;
+from MySQLdb import _mysql
+import MySQLdb
 
 STRICT_MON_MODE = 1
 NORMAL_MON_MODE = 2
@@ -243,26 +243,38 @@ class DynamicFWIntf:
     def __init__(self):
         self.debug = False
         self.uri = "https://127.0.0.1:6466"
+        self.psk = None
     
     def config_firewall_uri(self, firewall_endpoint):
         umbrella_firewall_uri = "https://127.0.0.1:6466"
+        firewall_psk = None
         try:
             firewall_ip = firewall_endpoint["ip"]
             firewall_port = firewall_endpoint["port"]
             umbrella_firewall_uri = "https://{ip}:{port}".format(ip=firewall_ip, port=firewall_port)
+
+            if "psk" in firewall_endpoint:
+                firewall_psk = firewall_endpoint["psk"]
         except BaseException as e:
             print("wrong configuration of umbrella firewall ", e)
 
         self.uri = umbrella_firewall_uri
+        self.psk = firewall_psk
 
     def add_host_to_strict_monitor(self, ip_addr):
-        target_uri = "curl -k -X POST {uri}/add_strict_mon_host?ip_addr={addr}".format(uri=self.uri, addr=ip_addr)
+        if self.psk:
+            target_uri = "curl -k -X POST {uri}/add_strict_mon_host?\"ip_addr={addr}&psk={psk}\"".format(uri=self.uri, addr=ip_addr, psk=self.psk)
+        else:
+            target_uri = "curl -k -X POST {uri}/add_strict_mon_host?ip_addr={addr}".format(uri=self.uri, addr=ip_addr)
         status = os.system(target_uri)
         if status != 0:
             print("Add Host to Strict Monitor failed")
 
     def del_host_from_strict_monitor(self, ip_addr):
-        target_uri = "curl -k -X POST {uri}/del_strict_mon_host?ip_addr={addr}".format(uri=self.uri, addr=ip_addr)
+        if self.psk:
+            target_uri = "curl -k -X POST {uri}/del_strict_mon_host?\"ip_addr={addr}&psk={psk}\"".format(uri=self.uri, addr=ip_addr, psk=self.psk)
+        else:
+            target_uri = "curl -k -X POST {uri}/del_strict_mon_host?ip_addr={addr}".format(uri=self.uri, addr=ip_addr)
         status = os.system(target_uri)
         if status != 0:
             print("Del Host from Strict Monitor failed")
@@ -279,8 +291,10 @@ class DynamicFWIntf:
         return result
 
     def add_target_to_mon_host(self, mon_addr, ip_addr):
-        target_uri = "curl -k -X POST {uri}/add_target_for_strict_host?\"mon_addr={m_addr}&ip_addr={i_addr}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr)
-        
+        if self.psk:
+            target_uri = "curl -k -X POST {uri}/add_target_for_strict_host?\"mon_addr={m_addr}&ip_addr={i_addr}&psk={psk}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr, psk=self.psk)
+        else:    
+            target_uri = "curl -k -X POST {uri}/add_target_for_strict_host?\"mon_addr={m_addr}&ip_addr={i_addr}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr)       
         status = os.system(target_uri)
         if status != 0:
             print("Add allowed target IP to Strict Access Host failed")
@@ -289,7 +303,10 @@ class DynamicFWIntf:
         return True
 
     def del_target_from_mon_host(self, mon_addr, ip_addr):
-        target_uri = "curl -k -X POST {uri}/del_target_for_strict_host?\"mon_addr={m_addr}&ip_addr={i_addr}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr)
+        if self.psk:
+            target_uri = "curl -k -X POST {uri}/del_target_for_strict_host?\"mon_addr={m_addr}&ip_addr={i_addr}&psk={psk}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr, psk=self.psk)
+        else:
+            target_uri = "curl -k -X POST {uri}/del_target_for_strict_host?\"mon_addr={m_addr}&ip_addr={i_addr}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr)
         status = os.system(target_uri)
         if status != 0:
             print("Del allowed target IP from Strict Access Host failed")
@@ -309,7 +326,10 @@ class DynamicFWIntf:
         return result
 
     def clean_target_from_mon_host(self, mon_addr):
-        target_uri = "curl -k -X POST {uri}/clean_target_for_strict_host?mon_addr={m_addr}".format(uri=self.uri, m_addr=mon_addr)
+        if self.psk:
+            target_uri = "curl -k -X POST {uri}/clean_target_for_strict_host?\"mon_addr={m_addr}&psk={psk}\"".format(uri=self.uri, m_addr=mon_addr, psk=self.psk)
+        else:
+            target_uri = "curl -k -X POST {uri}/clean_target_for_strict_host?mon_addr={m_addr}".format(uri=self.uri, m_addr=mon_addr)
         status = os.system(target_uri)
         if status != 0:
             print("Clean all allowed target IP from strict Access Host failed")
@@ -491,6 +511,7 @@ class Telescope:
     def analysis_nw_pkt_mon(self, nw_pkt_mon_file):
         """
         Loop process to monitoring all DNS traffic captured by Umbrealla NW
+        No tcpdump required 
         """
         monitored_dns_servers = dict({})
         try:
@@ -943,7 +964,7 @@ if __name__ ==  '__main__':
 
     telescope.start_mon(config_file)
     
-    app.run(debug=True, port=8483)
+    app.run(ssl_context='adhoc', port=8483)
 
     while True:
         time.sleep(10)

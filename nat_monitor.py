@@ -1,20 +1,22 @@
 #!/usr/bin/python
+#
 # Apache 2.0
 # Copyright 2021-2023 Zhao Zhe(Alex)
+#
 # LPM TRIE tree based NAT destination recording
 # LPM TRIE tree based source IP address tree associate
 # with NAT destination tree
 # Not use MySQL for its slow performance and costly in CPU load
-import sys;
-import re;
-import subprocess;
+import sys
+import re
+import subprocess
 
-from arp_entries.arp_entries import ArpEntries;
+from arp_entries import ArpEntries
 
-from MySQLdb import _mysql;
-import MySQLdb;
+from MySQLdb import _mysql
+import MySQLdb
 
-from datetime import date;
+from datetime import date
 
 # Table needs to update
 #     nat_out_dst_ips;
