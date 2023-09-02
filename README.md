@@ -2,13 +2,31 @@
 
 WARNING: 
 
-Telescope is offensive, it will record all the access from its controlled internal network   
+Telescope is offensive, it will record all accesses from its controlled internal network   
 Except you really want to do it, otherwise you don't need it   
 
-Telescope will record every access to target IP from internal security controlled network external access with timestamp   
-within database, also access domain name will be recorded    
+## Traffic Monitor System    
+```
+/etc/syslog-ng.conf
 
-# Traffic Monitor System    
+add below contents to syslog configuration
+
+
+source s_net {
+    network(ip(192.168.*.*) port(514)); # Replace the IP address which receive the traffic from router
+};
+
+
+destination d_security { 
+  python(
+    class(traffic_monitor.AuditorDestination) 
+    options(debug False)
+  ); 
+};
+
+```
+and put traffic_monitor.py to the folder /etc/syslog-ng/python/    
+
 
 ## Logging all traffic to Database     
   1. FreeBSD router configuration with log NATed traffic    

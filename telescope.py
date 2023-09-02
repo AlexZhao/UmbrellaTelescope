@@ -7,6 +7,20 @@
 # You don't need it except you want to record every access from your internal network
 # Daemon process to monitoring device according to its
 # defined list
+#
+# Database table dhcp_leases for recording internal connected devices: 
+# +-------------+--------------+------+-----+---------+----------------+
+# | Field       | Type         | Null | Key | Default | Extra          |
+# +-------------+--------------+------+-----+---------+----------------+
+# | id          | int(11)      | NO   | PRI | NULL    | auto_increment |
+# | mac_addr    | varchar(20)  | YES  |     | NULL    |                |
+# | ip_addr     | varchar(128) | YES  |     | NULL    |                |
+# | lease_start | datetime     | YES  |     | NULL    |                |
+# | lease_end   | datetime     | YES  |     | NULL    |                |
+# | comments    | varchar(255) | YES  |     | NULL    |                |
+# | state       | varchar(255) | YES  |     | NULL    |                |
+# +-------------+--------------+------+-----+---------+----------------+
+#
 import io
 import sys
 from concurrent.futures import thread
@@ -228,22 +242,33 @@ class DynamicFWIntf:
     # current all security based on ipfw firewall access right, easy to be override
     def __init__(self):
         self.debug = False
-        self.uri = "https://192.168.10.1:6466/"
+        self.uri = "https://127.0.0.1:6466"
     
+    def config_firewall_uri(self, firewall_endpoint):
+        umbrella_firewall_uri = "https://127.0.0.1:6466"
+        try:
+            firewall_ip = firewall_endpoint["ip"]
+            firewall_port = firewall_endpoint["port"]
+            umbrella_firewall_uri = "https://{ip}:{port}".format(ip=firewall_ip, port=firewall_port)
+        except BaseException as e:
+            print("wrong configuration of umbrella firewall ", e)
+
+        self.uri = umbrella_firewall_uri
+
     def add_host_to_strict_monitor(self, ip_addr):
-        target_uri = "curl -k -X POST {uri}add_strict_mon_host?ip_addr={addr}".format(uri=self.uri, addr=ip_addr)
+        target_uri = "curl -k -X POST {uri}/add_strict_mon_host?ip_addr={addr}".format(uri=self.uri, addr=ip_addr)
         status = os.system(target_uri)
         if status != 0:
             print("Add Host to Strict Monitor failed")
 
     def del_host_from_strict_monitor(self, ip_addr):
-        target_uri = "curl -k -X POST {uri}del_strict_mon_host?ip_addr={addr}".format(uri=self.uri, addr=ip_addr)
+        target_uri = "curl -k -X POST {uri}/del_strict_mon_host?ip_addr={addr}".format(uri=self.uri, addr=ip_addr)
         status = os.system(target_uri)
         if status != 0:
             print("Del Host from Strict Monitor failed")
 
     def list_host_from_strict_monitor(self):
-        target_uri = "{uri}list_strict_mon_host".format(uri=self.uri)
+        target_uri = "{uri}/list_strict_mon_host".format(uri=self.uri)
         list_host = subprocess.Popen(['curl', '-s', '-k', target_uri], stdout=subprocess.PIPE)
         output = list_host.stdout.readline().decode("utf-8")
         result = "" + output
@@ -254,9 +279,8 @@ class DynamicFWIntf:
         return result
 
     def add_target_to_mon_host(self, mon_addr, ip_addr):
-        target_uri = "curl -k -X POST \"{uri}add_target_for_strict_host?mon_addr={m_addr}&ip_addr={i_addr}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr)
+        target_uri = "curl -k -X POST {uri}/add_target_for_strict_host?\"mon_addr={m_addr}&ip_addr={i_addr}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr)
         
-        print(target_uri)
         status = os.system(target_uri)
         if status != 0:
             print("Add allowed target IP to Strict Access Host failed")
@@ -265,7 +289,7 @@ class DynamicFWIntf:
         return True
 
     def del_target_from_mon_host(self, mon_addr, ip_addr):
-        target_uri = "curl -k -X POST \"{uri}del_target_for_strict_host?mon_addr={m_addr}&ip_addr={i_addr}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr)
+        target_uri = "curl -k -X POST {uri}/del_target_for_strict_host?\"mon_addr={m_addr}&ip_addr={i_addr}\"".format(uri=self.uri, m_addr=mon_addr, i_addr=ip_addr)
         status = os.system(target_uri)
         if status != 0:
             print("Del allowed target IP from Strict Access Host failed")
@@ -274,7 +298,7 @@ class DynamicFWIntf:
         return True
 
     def list_target_from_mon_host(self, mon_addr):
-        target_uri = "{uri}list_target_for_strict_host?mon_addr={m_addr}".format(uri=self.uri, m_addr=mon_addr)
+        target_uri = "{uri}/list_target_for_strict_host?mon_addr={m_addr}".format(uri=self.uri, m_addr=mon_addr)
         list_target = subprocess.Popen(['curl', '-s', '-k', target_uri], stdout=subprocess.PIPE)
         output = list_target.stdout.readline().decode("utf-8")
         result = "" + output
@@ -284,34 +308,13 @@ class DynamicFWIntf:
         
         return result
 
-    def add_fwd_target(self, ip_addr):
-        target_uri = "curl -k -X POST {uri}add_fwd_target_ip?ip_addr={ip_addr}".format(uri=self.uri, ip_addr=ip_addr)
-        status = os.system(target_uri)
-        if status != 0:
-            print("Add target IP to forward list failed ", ip_addr)
-            return False
-        
-        return True
-
     def clean_target_from_mon_host(self, mon_addr):
-        target_uri = "curl -k -X POST {uri}clean_target_for_strict_host?mon_addr={m_addr}".format(uri=self.uri, m_addr=mon_addr)
+        target_uri = "curl -k -X POST {uri}/clean_target_for_strict_host?mon_addr={m_addr}".format(uri=self.uri, m_addr=mon_addr)
         status = os.system(target_uri)
         if status != 0:
             print("Clean all allowed target IP from strict Access Host failed")
             return False
         return True
-
-    def add_dns_forward_to_ipset(self, ip_addr):
-        cmd_line = "ipset add strict_hosts_list {ip}".format(ip=ip_addr)
-        status = os.system(cmd_line)
-        if status != 0:
-            print("Add IP to DNS forwarding failed")
-    
-    def del_dns_forward_from_ipset(self, ip_addr):
-        cmd_line = "ipset del strict_hosts_list {ip}".format(ip=ip_addr)
-        status = os.system(cmd_line)
-        if status != 0:
-            print("Remove IP from DNS forwarding failed")
 
 class Telescope:
     def __init__(self):
@@ -323,10 +326,8 @@ class Telescope:
         self.redeye_mon_end = datetime.time(6, 0, 0)
         self.redeye_monitor = {}
         self.redeye_lookup = {}
-        
-        # Neighbour Info
-        self.neigh_entries = ArpEntries(load_device_list("known_device.list"))
-        self.neigh_entries.start_mon()
+
+        self.neigh_entries = ArpEntries(dict({}))        
 
         self.lock = threading.Lock()
         self.under_out_traffic_monitor = False
@@ -375,7 +376,6 @@ class Telescope:
             # strict monitor mode update for host 
             if self.under_monitor[ip_addr].is_strict_monitored():
                 self.fw_intf.add_host_to_strict_monitor(ip_addr)
-                self.fw_intf.add_dns_forward_to_ipset(ip_addr)
 
             return True
 
@@ -404,8 +404,6 @@ class Telescope:
 
         if need_del:
             self.fw_intf.del_host_from_strict_monitor(ip_addr)
-            self.fw_intf.del_dns_forward_from_ipset(ip_addr)
-
             return True
 
         return False
@@ -494,8 +492,11 @@ class Telescope:
         """
         Loop process to monitoring all DNS traffic captured by Umbrealla NW
         """
-        self.dns_log_file = nw_pkt_mon_file
+        monitored_dns_servers = dict({})
         try:
+            self.dns_log_file = nw_pkt_mon_file["log_file"]
+            for dns_server in nw_pkt_mon_file["dns_servers"]:
+                monitored_dns_servers[dns_server] = True
             dns_pkt_process = subprocess.Popen(['tail', '-f', self.dns_log_file], stdout=subprocess.PIPE)
         except BaseException as e:
             print("Not able to open DNS packet monitor file, DNS packet monitor failed with error  ", e)
@@ -507,18 +508,18 @@ class Telescope:
                 dns_pkt = json.loads(output)
                 if dns_pkt["pkt_type"] == "dns_response":
                     dst_ip = dns_pkt["ip_header"]["dst"]
-                    self.lock.acquire()
-                    # For each records within DNS.RR
-                    if dst_ip in self.under_monitor:
-                        for r in dns_pkt["rrs"]:
-                            records = r.split()
-                            if records[3] == "A":
-                                self.under_monitor[dst_ip].update_dns_lookup(records[0], records[4])
-                                if self.under_monitor[dst_ip].is_strict_monitored():
-                                    self.fw_intf.add_target_to_mon_host(dst_ip, records[4])
-                                    self.fw_intf.add_fwd_target(records[3])
-
-                    self.lock.release()
+                    src_ip = dns_pkt["ip_header"]["src"]
+                    if src_ip in monitored_dns_servers:
+                        self.lock.acquire()
+                        # For each records within DNS.RR
+                        if dst_ip in self.under_monitor:
+                            for r in dns_pkt["rrs"]:
+                                records = r.split()
+                                if records[3] == "A":
+                                    self.under_monitor[dst_ip].update_dns_lookup(records[0], records[4])
+                                    if self.under_monitor[dst_ip].is_strict_monitored():
+                                        self.fw_intf.add_target_to_mon_host(dst_ip, records[4])
+                        self.lock.release()
             except BaseException as e:
                 print("Wrong format of the DNS packet recording  ", e)
 
@@ -563,7 +564,6 @@ class Telescope:
                                         # If Host client under strict monitor, add the firewall allow access
                                         if self.under_monitor[src_ip].is_strict_monitored():
                                             self.fw_intf.add_target_to_mon_host(src_ip, record_content)
-                                            self.fw_intf.add_fwd_target(record_content)
                                             #Timeout process need to remove the target IP
                                     updated_ans_count = updated_ans_count + 1
                 
@@ -809,6 +809,14 @@ class Telescope:
             print("No workable configuration used ", e)
             sys.exit()
         
+        if "umbrella_firewall_endpoint" in self.config:
+            self.fw_intf.config_firewall_uri(self.config["umbrella_firewall_endpoint"])
+
+        if "known_devices_list" in self.config:
+            # Neighbour Info
+            self.neigh_entries = ArpEntries(load_device_list(self.config["known_devices_list"]))
+            self.neigh_entries.start_mon()
+
         # port 8483 = TS short for Telescope
         if "input_logs" in self.config:
             if "analysis_log" in self.config["input_logs"]:
@@ -823,15 +831,14 @@ class Telescope:
         # Check if Umbrella NW enabled to parse log from configured inputs  
         if "input_logs" in self.config:
             if "nw_dns_log" in self.config["input_logs"]:
-                self.under_dns_traffic_monitor = True
                 self.dns_mon_th = threading.Thread(name="dns_mon", target=self.analysis_nw_pkt_mon, args=[self.config["input_logs"]["nw_dns_log"]])
                 self.dns_mon_th.start()
+                self.under_dns_traffic_monitor = True
 
         if not self.under_dns_traffic_monitor: 
-            self.under_dns_traffic_monitor = True
             self.dns_mon_th = threading.Thread(name="dns mon", target=self.analysis_tcpdump)
             self.dns_mon_th.start()
-
+            self.under_dns_traffic_monitor = True
 
         self.under_nf_monitor = True
         self.nf_mon_th = threading.Thread(name="nf mon", target=self.analysis_nf)
@@ -849,7 +856,7 @@ class Telescope:
 
         print("Start to monitoring system...")
 
-telescope = Telescope("/var/log/auditor_python.log")
+telescope = Telescope()
 
 parser = reqparse.RequestParser()
 parser.add_argument('ip_addr', type=str, location='args')
@@ -929,7 +936,7 @@ api.add_resource(DMZAccess, '/dmz_details')
 
 
 if __name__ ==  '__main__':
-    config_file = "/etc/umbrella/telescope/telescope.json"
+    config_file = "/etc/umbrella/telescope/telescope.conf"
 
     if sys.argv[1]:
         config_file = sys.argv[1]
