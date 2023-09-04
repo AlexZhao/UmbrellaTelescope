@@ -1,9 +1,7 @@
 # UmbrellaTelescope
 
-WARNING: 
+English | [简体中文](README-CN.md)    
 
-Telescope is offensive, it will record all accesses from its controlled internal network   
-Except you really want to do it, otherwise you don't need it   
 
 ## Traffic Monitor System    
 ```
