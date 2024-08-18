@@ -199,8 +199,3 @@ and its access details:
 it also support redeye dump, when there is no device connected, it will close updates idle time connected device to strict monitoring mode    
 
 ```
-
-
-
-![Donate](./DONATE.JPG)
-![Donate](./DONATE_Z.JPG)
