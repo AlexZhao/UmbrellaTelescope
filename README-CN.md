@@ -40,6 +40,3 @@ traffic_monitor.py会被syslog-ng调用，记录经过NAT的连接到数据库
 
 
 Author: Zhao Zhe (Alex)
-
-![Donate](./DONATE.JPG)
-![Donate](./DONATE_Z.JPG)
